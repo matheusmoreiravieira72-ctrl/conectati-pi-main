@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
 
@@ -8,35 +9,34 @@ interface MensagemChat {
   texto: string;
 }
 
-const PROMPT_SISTEMA = `Você é o Conecta Robot, o assistente virtual de IA do ConectaTI Senac —
-o sistema de chamados, suporte técnico e gestão de equipamentos do Senac (unidades do DF, sede atual em Taguatinga).
-
-Sua função: conversar com servidores, instrutores e o Suporte TI, ajudando no uso do sistema.
-
-O que você sabe sobre o sistema:
-- Aba Início: estatísticas de chamados abertos, notebooks disponíveis, % de satisfação e QR Code de avaliação.
-- Aba Chamados: lista com busca e filtros (Todos, Aberto, Em atendimento, Resolvido); botão "Novo" abre um chamado com Tipo (Notebook, Projetor, Internet, Impressora, Computador, Software, Outro), Local (labs, salas, biblioteca…), Prioridade (Baixa, Média, Alta) e Descrição (mínimo 10 caracteres). Chamados podem ser editados; o Suporte TI pode "Iniciar atendimento", "Fechar chamado" e "Reabrir".
-- Regra de fechamento: para "Fechar chamado" (fica Resolvido) é OBRIGATÓRIO anexar uma evidência do atendimento — imagem ou documento (PDF, Word, Excel, PowerPoint, TXT, CSV) de até 5 MB. Sem anexo, o sistema não permite fechar. A evidência fica registrada no chamado e pode ser aberta pelo link "Evidência:".
-- Aba Equipamentos: notebooks com patrimônio (NB-xxx); o Suporte TI pode Reservar, Liberar, enviar para Manutenção e concluir manutenção.
-- Aba Indicadores: dashboards para coordenação e administração.
-- Login: unidade, usuário e senha; alternativa por digital ou reconhecimento facial (WebAuthn); acesso exclusivo do Suporte TI.
-- Avaliações: o QR Code "Avalie o atendimento" abre o formulário de nota de 1 a 5 estrelas com comentário.
-
-Estilo de resposta:
-- Português do Brasil, simpático, objetivo e profissional.
-- Respostas curtas (2 a 5 frases), ideais para um chat de celular.
-- Se perguntarem algo fora do escopo do sistema/Senac, responda educadamente e traga a conversa de volta ao ConectaTI.
-- Nunca invente números de patrimônio ou chamados específicos; use os dados que o usuário informar.`;
-
-// Inicializa o cliente Groq usando a variável de ambiente GROQ_API_KEY
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const PROMPT_SISTEMA = `Você é o Conecta Robot, o assistente virtual de IA do ConectaTI Senac.
+Ajude servidores, instrutores e o Suporte TI com chamados, equipamentos, indicadores e avaliações.
+Responda em português do Brasil, de forma simpática, objetiva e profissional.
+Use respostas curtas, de 2 a 5 frases.
+Nunca invente números de chamados ou patrimônios.
+Se a pergunta estiver fora do escopo, redirecione educadamente para o ConectaTI.`;
 
 export async function POST(requisicao: Request) {
   try {
-    const corpo = (await requisicao.json()) as { mensagens?: MensagemChat[] };
-    const mensagens = Array.isArray(corpo.mensagens) ? corpo.mensagens : [];
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+
+    if (!apiKey) {
+      console.error("GROQ_API_KEY não está configurada.");
+      return NextResponse.json(
+        { erro: "A chave da IA não está configurada no servidor." },
+        { status: 500 }
+      );
+    }
+
+    const groq = new Groq({ apiKey });
+
+    const corpo = await requisicao.json() as {
+      mensagens?: MensagemChat[];
+    };
+
+    const mensagens = Array.isArray(corpo.mensagens)
+      ? corpo.mensagens
+      : [];
 
     const historicoValido = mensagens
       .filter(
@@ -44,18 +44,18 @@ export async function POST(requisicao: Request) {
           m &&
           typeof m.texto === "string" &&
           m.texto.trim().length > 0 &&
-          (m.papel === "usuario" || m.papel === "robot"),
+          (m.papel === "usuario" || m.papel === "robot")
       )
-      .slice(-12) // limita o contexto enviado ao modelo
+      .slice(-12)
       .map((m) => ({
-        role: m.papel === "usuario" ? ("user" as const) : ("assistant" as const),
+        role: m.papel === "usuario" ? "user" as const : "assistant" as const,
         content: m.texto.slice(0, 2000),
       }));
 
     if (historicoValido.length === 0) {
       return NextResponse.json(
         { erro: "Envie uma mensagem para conversar com o Conecta Robot." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -70,21 +70,21 @@ export async function POST(requisicao: Request) {
     });
 
     const resposta = completion.choices[0]?.message?.content?.trim();
+
     if (!resposta) {
       return NextResponse.json(
-        { erro: "O Conecta Robot não conseguiu responder. Tente novamente." },
-        { status: 502 },
+        { erro: "O Conecta Robot não conseguiu responder." },
+        { status: 502 }
       );
     }
 
     return NextResponse.json({ resposta });
   } catch (erro) {
     console.error("Erro no chat:", erro);
+
     return NextResponse.json(
-      {
-        erro: "Conecta Robot indisponível neste momento. Tente novamente em instantes.",
-      },
-      { status: 500 },
+      { erro: "Conecta Robot indisponível neste momento. Tente novamente." },
+      { status: 500 }
     );
   }
 }
