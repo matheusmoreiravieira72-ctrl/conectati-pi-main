@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import Groq from "groq-sdk";
 
 export const runtime = "nodejs";
 
@@ -28,6 +28,11 @@ Estilo de resposta:
 - Se perguntarem algo fora do escopo do sistema/Senac, responda educadamente e traga a conversa de volta ao ConectaTI.
 - Nunca invente números de patrimônio ou chamados específicos; use os dados que o usuário informar.`;
 
+// Inicializa o cliente Groq usando a variável de ambiente GROQ_API_KEY
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
+
 export async function POST(requisicao: Request) {
   try {
     const corpo = (await requisicao.json()) as { mensagens?: MensagemChat[] };
@@ -54,13 +59,14 @@ export async function POST(requisicao: Request) {
       );
     }
 
-    const zai = await ZAI.create();
-    const completion = await zai.chat.completions.create({
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
       messages: [
-        { role: "assistant", content: PROMPT_SISTEMA },
+        { role: "system", content: PROMPT_SISTEMA },
         ...historicoValido,
       ],
-      thinking: { type: "disabled" },
+      temperature: 0.7,
+      max_tokens: 500,
     });
 
     const resposta = completion.choices[0]?.message?.content?.trim();
@@ -72,11 +78,11 @@ export async function POST(requisicao: Request) {
     }
 
     return NextResponse.json({ resposta });
-  } catch {
+  } catch (erro) {
+    console.error("Erro no chat:", erro);
     return NextResponse.json(
       {
-        erro:
-          "Conecta Robot indisponível neste momento. Tente novamente em instantes.",
+        erro: "Conecta Robot indisponível neste momento. Tente novamente em instantes.",
       },
       { status: 500 },
     );
